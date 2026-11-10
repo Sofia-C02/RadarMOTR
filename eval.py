@@ -18,6 +18,9 @@ from trackers.radarmotr import RadarMOTRTracker
 from trackers.sort import SortTracker
 from trackers.kf import KFTracker
 
+# Benchmarking
+from benchmarking.latency_meter import LatencyMeter
+
 # Sacred config
 ex = new_experiment('Tracker-Eval',
                     training=False,
@@ -30,6 +33,8 @@ ex.add_named_config('resnet18', os.path.join('configs', 'resnet18.yaml'))
 ex.add_named_config('debug', os.path.join('configs', 'eval_debug.yaml'))
 ex.add_named_config('sort', os.path.join('configs', 'trackers', 'sort.yaml'))
 ex.add_named_config('kf', os.path.join('configs', 'trackers', 'kf.yaml'))
+# Benchmark
+ex.add_named_config('latency', os.path.join('configs', 'latency.yaml'))
 
 
 class RadarDataset(RadarSequence):
@@ -99,7 +104,11 @@ def eval(args: Namespace, _log: Logger):
     # Remove all previous track results
     for file in glob.iglob(f'{args.dataset}{"[0-9]" * 4}.txt', root_dir=output_dir):
         os.unlink(os.path.join(output_dir, file))
-
+    
+    # Initialize latency benchmarking
+    latency_meter = None
+    if args.benchmark_latency:
+        latency_meter = LatencyMeter()
     _log.info(f'Starting tracking.')
 
     transforms = build_transforms(args.dataset, args.split, args)
@@ -113,7 +122,12 @@ def eval(args: Namespace, _log: Logger):
                             collate_fn=dataset.collate)
 
         tracker.reset()
-        tracker.track(loader, dataset.id, output_dir)
+        tracker.track(loader, dataset.id, output_dir, latency_meter)
+
+    # Log latency measurements
+    if latency_meter is not None:
+        summary = latency_meter.summary()
+        _log.info(f'Latency measurements: {summary}')
 
     _log.info(f'Starting evaluation.')
 

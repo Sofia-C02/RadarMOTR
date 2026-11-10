@@ -14,3 +14,6 @@ eval: true
 # Tracker model to evaluate (Options: 'RadarMOTR', 'SORT'. Default is 'RadarMOTR')
 tracker: null
 
+#---Benchmarking---
+benchmark_latency: False
+

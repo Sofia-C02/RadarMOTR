@@ -13,7 +13,7 @@ class Tracker(ABC):
     def track_frame(self, frame: int, data: tuple[torch.Tensor, dict[str]]) -> tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError()
 
-    def track(self, loader: DataLoader, seq_id: str, output_dir: str):
+    def track(self, loader: DataLoader, seq_id: str, output_dir: str, latency_meter=None):
         lines: list[str] = []
         n_tracks: int = 0
         seen_id_map: dict[int, int] = {}
@@ -21,7 +21,12 @@ class Tracker(ABC):
         for i, data in enumerate(tqdm(loader, desc=seq_id, unit=' Frames')):
             frame_idx = i + 1
 
-            bbox_xywh, identities = self.track_frame(frame_idx, data)
+            if latency_meter is not None:
+                bbox_xywh, identities = latency_meter.measure(
+                    self.track_frame, frame_idx, data
+                )
+            else:
+                bbox_xywh, identities = self.track_frame(frame_idx, data)
 
             for xywh, track_id in zip(bbox_xywh, identities):
                 track_id = track_id.item()
