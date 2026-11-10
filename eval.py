@@ -20,6 +20,7 @@ from trackers.kf import KFTracker
 
 # Benchmarking
 from benchmarking.latency_meter import LatencyMeter
+from benchmarking.jetson_monitor import JetsonMonitor
 
 # Sacred config
 ex = new_experiment('Tracker-Eval',
@@ -35,6 +36,7 @@ ex.add_named_config('sort', os.path.join('configs', 'trackers', 'sort.yaml'))
 ex.add_named_config('kf', os.path.join('configs', 'trackers', 'kf.yaml'))
 # Benchmark
 ex.add_named_config('latency', os.path.join('configs', 'latency.yaml'))
+ex.add_named_config('jetson', os.path.join('configs', 'jetson.yaml'))
 
 
 class RadarDataset(RadarSequence):
@@ -109,25 +111,46 @@ def eval(args: Namespace, _log: Logger):
     latency_meter = None
     if args.benchmark_latency:
         latency_meter = LatencyMeter()
+
+    # Initialize jetson benchmarking
+    jetson_monitor = None
+    if args.benchmark_jetson:
+        jetson_monitor = JetsonMonitor(interval=1.0)
+
     _log.info(f'Starting tracking.')
 
     transforms = build_transforms(args.dataset, args.split, args)
-    for _, sequence in tqdm(sequences, desc='Evaluation', unit='Sequence'):
-        dataset = RadarDataset(sequence, transforms)
-        loader = DataLoader(dataset,
-                            batch_size=args.batch_size,
-                            shuffle=False,
-                            num_workers=args.workers,
-                            pin_memory=True,
-                            collate_fn=dataset.collate)
+    def run_tracking():
+        n_frames = 0
+        for _, sequence in tqdm(sequences, desc='Evaluation', unit='Sequence'):
+            dataset = RadarDataset(sequence, transforms)
+            loader = DataLoader(dataset,
+                                batch_size=args.batch_size,
+                                shuffle=False,
+                                num_workers=args.workers,
+                                pin_memory=True,
+                                collate_fn=dataset.collate)
 
-        tracker.reset()
-        tracker.track(loader, dataset.id, output_dir, latency_meter)
+            tracker.reset()
+            tracker.track(loader, dataset.id, output_dir, latency_meter)
+            n_frames += len(dataset)
+
+        return n_frames
+
+    if jetson_monitor is not None:
+        n_frames = jetson_monitor.measure(run_tracking)
+    else:
+        n_frames = run_tracking()
 
     # Log latency measurements
     if latency_meter is not None:
         summary = latency_meter.summary()
         _log.info(f'Latency measurements: {summary}')
+
+    # Log jetson measurements
+    if jetson_monitor is not None:
+        jetson_summary = jetson_monitor.summary(n_frames)
+        _log.info(f'Jetson measurements: {jetson_summary}')
 
     _log.info(f'Starting evaluation.')
 

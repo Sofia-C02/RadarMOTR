@@ -16,4 +16,5 @@ tracker: null
 
 #---Benchmarking---
 benchmark_latency: False
+benchmark_jetson: False
 
