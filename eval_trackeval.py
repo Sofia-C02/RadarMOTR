@@ -37,6 +37,11 @@ def run_trackeval(tracker_dir: str, args: Namespace):
     dataset_config['TRACKER_SUB_FOLDER'] = ''
     dataset_config['TRACKERS_FOLDER'] = args.output_dir
 
+    if args.sequence_ids is not None:
+        dataset_config['SEQ_INFO'] = {
+            seq_id: None for seq_id in args.sequence_ids
+        }
+
     metrics_config = {
         'METRICS': ['HOTA', 'CLEAR', 'Identity'],
         'THRESHOLD': 0.5
@@ -64,6 +69,12 @@ if __name__ == '__main__':
     parser.add_argument('--output', '-o', dest='output_dir', type=str, default=os.path.join('data', 'trackers'), help='Path to the directory where all trackers are stored grouped by the dataset split.')
     parser.add_argument('--split', '-s', dest='split', type=str, default='val', help='Dataset split to evaluate.')
     parser.add_argument('--workers', '-j', dest='workers', type=int, default=2, help='Number of workers for parallel execution.')
+    parser.add_argument(
+        '--sequence-ids',
+        nargs='+',
+        default=None,
+        help='Sequence IDs to evaluate.'
+    )
 
     args = parser.parse_args()
 

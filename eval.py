@@ -95,7 +95,7 @@ def eval(args: Namespace, _log: Logger):
 
     _log.info(f'Evaluating on dataset {args.dataset} in \"{args.data_path}\".')
 
-    sequences = get_sequence_paths(args.data_path, args.dataset, args.split)
+    sequences = get_sequence_paths(args.data_path, args.dataset, args.split, sequence_ids=args.sequence_ids)
 
     output_dir = os.path.join(args.output_dir, f'{args.dataset}-{args.split}', args.tracker_dirname)
     os.makedirs(output_dir, exist_ok=True)

@@ -50,7 +50,12 @@ def get_image(path: str) -> torch.Tensor:
     return image
 
 
-def get_sequence_paths(data_path: str, dataset: str, split: str) -> list[tuple[str, str]]:
+def get_sequence_paths(
+    data_path: str, 
+    dataset: str, 
+    split: str,
+    sequence_ids: list[str] | None = None,
+) -> list[tuple[str, str]]:
     split_name = f'{dataset}-{split}'
     seqmap = os.path.join(data_path, 'seqmaps', f'{split_name}.txt')
     split_dir = os.path.join(data_path, split_name)
@@ -59,6 +64,10 @@ def get_sequence_paths(data_path: str, dataset: str, split: str) -> list[tuple[s
     with open(seqmap, 'r', newline='') as f:
         seq_reader = csv.reader(f)
         sequences = [(seq[0], os.path.join(split_dir, seq[0])) for seq in seq_reader if seq[0] != 'name']
+
+    if sequence_ids is not None:
+        requested_ids = set(sequence_ids)
+        sequences = [sequence for sequence in sequences if sequence[0] in requested_ids]
 
     return sequences
 
@@ -125,8 +134,18 @@ class RadarTrack(Dataset):
 
     FRAME_FILENAME_FORMAT = '{frame:06d}.png'
 
-    def __init__(self, data_path: str, dataset: str = 'rdtrack', split: str = 'train', transforms: T.MotCompose = None, *,
-                 sample_mode: str = 'fixed_interval', sample_size: int = 1, sample_stride: int = 1):
+    def __init__(
+        self, 
+        data_path: str, 
+        dataset: str = 'rdtrack', 
+        split: str = 'train', 
+        transforms: T.MotCompose = None, 
+        *,
+        sample_mode: str = 'fixed_interval', 
+        sample_size: int = 1, 
+        sample_stride: int = 1, 
+        sequence_ids: list[str] | None = None
+    ):
         if not os.path.exists(data_path):
             raise ValueError(f'Data path {data_path} does not exist.')
 
@@ -139,6 +158,7 @@ class RadarTrack(Dataset):
         self.sample_mode = sample_mode
         self.sample_size = sample_size
         self.sample_stride = sample_stride
+        self.sequence_ids = sequence_ids
 
         self.transforms = transforms
 
@@ -207,7 +227,7 @@ class RadarTrack(Dataset):
         }
 
     def _parse_sequences(self, data_path: str, dataset: str, split: str) -> dict[str, RadarSequence]:
-        sequence_paths = get_sequence_paths(data_path, dataset, split)
+        sequence_paths = get_sequence_paths(data_path, dataset, split, self.sequence_ids)
         return {seq_id: RadarSequence(seq_path) for seq_id, seq_path in sequence_paths}
 
 class RadarSequence(Dataset):
@@ -376,7 +396,8 @@ def build(split: str, args: Namespace):
         return RadarTrack(args.data_path, args.dataset, split, transforms,
                           sample_mode=args.sample_mode,
                           sample_size=args.sample_size,
-                          sample_stride=args.sample_stride)
+                          sample_stride=args.sample_stride,
+                          sequence_ids=args.sequence_ids)
 
     if split == 'val':
         return RadarTrackSequences(args.data_path, args.dataset, split, transforms)

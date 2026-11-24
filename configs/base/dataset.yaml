@@ -14,6 +14,7 @@ sample_mode: 'random_interval'
 sample_size: 5
 # Number of frames to skip, will be randomly picked between 1 and this value (inclusive)
 sample_stride: 10
+sequence_ids: null
 
 
 augment_data: true

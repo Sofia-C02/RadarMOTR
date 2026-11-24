@@ -6,6 +6,7 @@ output_dir: 'data/trackers'
 
 #---Dataset---
 split: 'val'
+sequence_ids: null
 
 #---Eval Config---
 eval: true
