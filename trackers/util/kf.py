@@ -85,7 +85,6 @@ def associate_detections_to_trackers(detections, trackers, dist_threshold):
             unmatched_trackers.append(m[1])
         else:
             matches.append(m.reshape(1,2))
-        matches.append(m.reshape(1,2))
 
     if len(matches) == 0:
         matches = np.empty((0, 2), dtype=int)

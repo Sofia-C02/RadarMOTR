@@ -34,7 +34,7 @@ class KFTracker(Tracker):
         max_v = img_w * self.velocity_resolution
         max_r = img_h * self.range_resolution
 
-        detections = targets['proposals'][:, :4].numpy()
+        detections = targets['proposals'][:, :4].clone().numpy()
 
         # xc,yc,w,h -> x,y,w,h
         detections[:, 0] -= (detections[:, 2] / 2)
