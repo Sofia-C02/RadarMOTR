@@ -114,7 +114,7 @@ def eval(args: Namespace, _log: Logger):
     # Initialize jetson benchmarking
     jetson_monitor = None
     if args.benchmark_jetson:
-        jetson_monitor = JetsonMonitor(interval=1.0)
+        jetson_monitor = JetsonMonitor(interval=0.1)
 
     _log.info(f'Starting tracking.')
 
