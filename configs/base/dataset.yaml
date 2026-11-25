@@ -18,6 +18,7 @@ sequence_ids: null
 
 
 augment_data: true
+proposals_normalized: true
 ## Augmentations (only training split)
 # Probability that the sample sequence is reversed and image/boxes are flipped horizontally. 0 to deactivate.
 aug_random_reverse_and_hflip_prob: 0.5

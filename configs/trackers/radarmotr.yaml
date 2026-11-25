@@ -20,3 +20,7 @@ miss_tolerance: 5
 
 # Keep all tracks with a bounding box area larger than this value.
 area_threshold: 0           # Min area in train and val datasets is 8
+
+proposal_assisted: false
+proposal_iou_threshold: 0.30
+proposals_normalized: true
