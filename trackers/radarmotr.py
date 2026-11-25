@@ -2,6 +2,7 @@ from argparse import Namespace
 from copy import deepcopy
 
 import torch
+import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 from trackers.tracker_base import Tracker
@@ -70,7 +71,7 @@ class RadarMOTRTracker(Tracker):
 
         # Replace predicted boxes with original detection proposals
         if self.proposal_assisted:
-            self.replace_boxes_with_proposals(
+            self.replace_predictions_with_proposals(
                 dt_instances,
                 proposals,
                 image_size
@@ -151,7 +152,33 @@ class RadarMOTRTracker(Tracker):
 
         return iou
 
-    def replace_boxes_with_proposals(
+    @staticmethod
+    def match_predictions_to_proposals(
+        pred_boxes: torch.Tensor,
+        orig_boxes: torch.Tensor,
+        iou_threshold: float
+    ) -> list[tuple[int, int]]:
+
+        if len(pred_boxes) == 0 or len(orig_boxes) == 0:
+            return []
+
+        iou = RadarMOTRTracker.calculate_iou(
+            pred_boxes,
+            orig_boxes
+        )
+        iou_np = iou.detach().cpu().numpy()
+
+        cost_matrix = 1.0 - iou_np
+        cost_matrix[iou_np < iou_threshold] = 1e6
+
+        pred_indices, orig_indices = linear_sum_assignment(cost_matrix)
+
+        valid_matches = [(int(pred_idx), int(orig_idx)) for pred_idx, orig_idx in zip(pred_indices, orig_indices)
+            if iou_np[pred_idx, orig_idx] >= iou_threshold]
+
+        return valid_matches
+
+    def replace_predictions_with_proposals(
         self,
         dt_instances: Instances,
         proposals: torch.Tensor,
@@ -168,21 +195,11 @@ class RadarMOTRTracker(Tracker):
         )
         pred_boxes = dt_instances.boxes
 
-        iou_matrix = self.calculate_iou(
+        valid_matches = self.match_predictions_to_proposals(
             pred_boxes,
-            orig_boxes
+            orig_boxes,
+            self.proposal_iou_threshold
         )
-        iou_np = iou_matrix.detach().cpu().numpy()
-
-        cost_matrix = 1.0 - iou_np
-        cost_matrix[iou_np < self.proposal_iou_threshold] = 1e6
-
-        pred_indices, orig_indices = linear_sum_assignment(
-            cost_matrix
-        )
-
-        valid_matches = [(pred_idx, orig_idx) for pred_idx, orig_idx in zip(pred_indices, orig_indices)
-            if iou_np[pred_idx, orig_idx] >= self.proposal_iou_threshold]
 
         if not valid_matches:
             return
@@ -195,6 +212,42 @@ class RadarMOTRTracker(Tracker):
 
         dt_instances.boxes = updated_boxes
 
+    def get_proposal_track_ids(
+        self,
+        dt_instances: Instances,
+        proposals: torch.Tensor,
+        image_size: tuple[int, int]
+    ) -> np.ndarray:
+
+        proposal_track_ids = np.full(len(proposals), -1, dtype=np.int64)
+
+        if len(dt_instances) == 0 or len(proposals) == 0:
+            return proposal_track_ids
+
+        orig_boxes = self.proposals_to_xywh(
+            proposals,
+            image_size,
+            self.proposals_normalized
+        )
+
+        valid_matches = self.match_predictions_to_proposals(
+            dt_instances.boxes,
+            orig_boxes,
+            self.proposal_iou_threshold
+        )
+
+        if not valid_matches:
+            return proposal_track_ids
+
+        pred_indices = torch.as_tensor([pred_idx for pred_idx, _ in valid_matches], dtype=torch.long, device=dt_instances.obj_idxes.device)
+        proposal_indices = np.array([orig_idx for _, orig_idx in valid_matches], dtype=np.int64)
+
+        # neural_ids -> preds -> proposals
+        neural_ids = dt_instances.obj_idxes[pred_indices].detach().cpu().numpy()
+        proposal_track_ids[proposal_indices] = neural_ids
+
+        return proposal_track_ids
+    
     def reset(self):
         self.model.reset()
         self.tracks = None
