@@ -532,12 +532,25 @@ class MoTColorJitter(T.ColorJitter):
 
 
 class Normalize(object):
-    def __init__(self, mean: list[float], std: list[float]):
+    def __init__(
+            self, 
+            mean: list[float], 
+            std: list[float], 
+            normalize_image: bool = True, 
+            normalize_boxes: bool = True, 
+            normalize_proposals: bool = True
+        ):
+
         self.mean = mean
         self.std = std
+        self.normalize_image = normalize_image
+        self.normalize_boxes = normalize_boxes
+        self.normalize_proposals = normalize_proposals
 
     def __call__(self, image, target=None):
-        image = F.normalize(image, mean=self.mean, std=self.std)
+        if self.normalize_image:
+            image = F.normalize(image, mean=self.mean, std=self.std)
+        
         if target is None:
             return image, None
 
@@ -546,9 +559,9 @@ class Normalize(object):
 
         scale = 1 / torch.as_tensor([w, h, w, h], dtype=torch.float32)
 
-        if 'boxes' in target:
+        if self.normalize_boxes and 'boxes' in target:
             target['boxes'] *= scale
-        if 'proposals' in target:
+        if self.normalize_proposals and 'proposals' in target:
             target['proposals'][..., :4] *= scale
 
         return image, target

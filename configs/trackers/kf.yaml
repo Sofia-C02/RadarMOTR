@@ -25,3 +25,4 @@ velocity_resolution: 0.41968030701528203
 fps: 10
 
 augment_data: false
+proposals_normalized: false

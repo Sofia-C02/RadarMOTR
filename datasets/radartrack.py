@@ -372,19 +372,22 @@ def build_transforms(dataset: str, split: str, args: Namespace) -> T.MotCompose:
         T.MotTranslateBoxes(),
     ]
 
-    if not args.augment_data:
-        return T.MotCompose(transformations)
-
-    if split == 'train':
+    if args.augment_data and split == 'train':
         transformations.extend([
             RDT.MotRandomReverseAndHFlip(p=args.aug_random_reverse_and_hflip_prob),
             RDT.MotRandomNoise(p=args.aug_random_noise_prob, mean=0.25, std=0.01),
         ])
 
-    # Always normalize in the last step.
-    assert dataset in STANDARDIZATION, f'Unsupported dataset {dataset}'
-    transformations.append(T.MotNormalize(mean=STANDARDIZATION[dataset]['mean'],
-                                          std=STANDARDIZATION[dataset]['std']))
+    if args.augment_data or args.proposals_normalized:
+        assert dataset in STANDARDIZATION, f'Unsupported dataset {dataset}'
+        transformations.append(T.MotNormalize(
+            mean=STANDARDIZATION[dataset]['mean'],
+            std=STANDARDIZATION[dataset]['std'],
+            normalize_image=args.augment_data,
+            normalize_boxes=args.augment_data,
+            normalize_proposals=args.proposals_normalized
+            )
+        )
 
     return T.MotCompose(transformations)
 
