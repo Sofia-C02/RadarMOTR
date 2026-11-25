@@ -23,7 +23,7 @@ def load_model(model: torch.nn.Module,
                lr_scheduler: torch.optim.lr_scheduler.StepLR = None,
                lr_drop: int = 0):
 
-    checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
+    checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage, weights_only=False)
     if resume:
         _log.info(f'Resuming model \"{model_path}\"')
     else:

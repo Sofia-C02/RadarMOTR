@@ -32,20 +32,34 @@ def data_apply(data, check_func, apply_func):
         for k in data.keys():
             if check_func(data[k]):
                 data[k] = apply_func(data[k])
-            elif isinstance(data[k], dict) or isinstance(data[k], list):
-                data_apply(data[k], check_func, apply_func)
+            elif isinstance(data[k], (dict, list, tuple)):
+                data[k] = data_apply(data[k], check_func, apply_func)
             else:
-                raise ValueError()
+                raise ValueError("invalid type {}".format(type(data[k])))
+
     elif isinstance(data, list):
         for i in range(len(data)):
             if check_func(data[i]):
                 data[i] = apply_func(data[i])
-            elif isinstance(data[i], dict) or isinstance(data[i], list):
-                data_apply(data[i], check_func, apply_func)
+            elif isinstance(data[i], (dict, list, tuple)):
+                data[i] = data_apply(data[i], check_func, apply_func)
             else:
                 raise ValueError("invalid type {}".format(type(data[i])))
+
+    elif isinstance(data, tuple):
+        result = []
+        for item in data:
+            if check_func(item):
+                result.append(apply_func(item))
+            elif isinstance(item, (dict, list, tuple)):
+                result.append(data_apply(item, check_func, apply_func))
+            else:
+                raise ValueError("invalid type {}".format(type(item)))
+        return tuple(result)
+
     else:
         raise ValueError("invalid type {}".format(type(data)))
+
     return data
 
 
