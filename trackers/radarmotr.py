@@ -51,7 +51,7 @@ class RadarMOTRTracker(Tracker):
         keep = areas > area_threshold
         return dt_instances[keep]
 
-    def track_frame(self, frame: int, data: tuple[torch.Tensor, dict[str, torch.Tensor]]):
+    def track_frame_with_proposal_ids(self, frame: int, data: tuple[torch.Tensor, dict[str, torch.Tensor]]):
         data = data_dict_to_device(data, self.device)
         image, targets = data
         proposals = targets['proposals']
@@ -69,6 +69,12 @@ class RadarMOTRTracker(Tracker):
         dt_instances = self.filter_by_score(dt_instances, self.score_threshold)
         dt_instances = self.filter_by_area(dt_instances, self.area_threshold)
 
+        proposal_track_ids = self.get_proposal_track_ids(
+            dt_instances,
+            proposals,
+            image_size
+        )
+
         # Replace predicted boxes with original detection proposals
         if self.proposal_assisted:
             self.replace_predictions_with_proposals(
@@ -80,6 +86,10 @@ class RadarMOTRTracker(Tracker):
         bbox_xywh = dt_instances.boxes
         identities = dt_instances.obj_idxes
 
+        return bbox_xywh, identities, proposal_track_ids
+
+    def track_frame(self, frame: int, data: tuple[torch.Tensor, dict[str, torch.Tensor]]):
+        bbox_xywh, identities, _ = self.track_frame_with_proposal_ids(frame, data)
         return bbox_xywh, identities
 
     @staticmethod
