@@ -26,9 +26,16 @@ class KFTracker(Tracker):
 
         self.model = RDSort(self.max_age, self.min_hits, self.dist_threshold, self.fps)
 
-    def track_frame(self, frame: int, data: tuple[torch.Tensor, dict[str, torch.Tensor]]):
+    def track_frame_with_proposal_ids(
+        self, 
+        frame: int, 
+        data: tuple[torch.Tensor, dict[str, torch.Tensor]],
+        detection_ids: np.ndarray | None = None,
+        association_mode: str = 'none',
+        weight: float = 0.5
+    ):
         image, targets = data
-
+        
         img_h, img_w = targets['orig_size'].unbind()
         img_h, img_w = img_h.item(), img_w.item()
         max_v = img_w * self.velocity_resolution
@@ -73,7 +80,12 @@ class KFTracker(Tracker):
         order = np.arange(len(centroids)).reshape(-1, 1)
         dets = np.concatenate((centroids, order), axis=1)
 
-        tracks = self.model.update(dets)
+        tracks = self.model.update(
+            dets,
+            detection_ids,
+            association_mode,
+            weight
+        )
 
         indices = tracks[:, 3].astype(np.int32)
         tracks_boxes = detections[indices]
@@ -81,7 +93,15 @@ class KFTracker(Tracker):
 
         identities = torch.tensor(ids, dtype=torch.int64)
 
-        return torch.from_numpy(tracks_boxes), identities
+        proposal_track_ids = np.full(len(detections), -1, dtype=np.int64)
+        proposal_track_ids[indices] = ids
+
+        return torch.from_numpy(tracks_boxes), identities, proposal_track_ids
+
+    def track_frame(self, frame: int, data: tuple[torch.Tensor, dict[str, torch.Tensor]]):
+        bbox_xywh, identities, _ = self.track_frame_with_proposal_ids(frame, data)
+
+        return bbox_xywh, identities
 
     def reset(self):
         self.model.reset()

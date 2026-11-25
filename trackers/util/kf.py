@@ -18,6 +18,7 @@
     This is a modified version by Esslingen University of Applied Sciences.
 """
 from __future__ import print_function
+from collections import defaultdict
 
 import numpy as np
 from filterpy.kalman import KalmanFilter
@@ -50,48 +51,137 @@ def convert_x_to_rv(x, score=None):
     else:
         return np.array([x[0], x[1], score]).reshape((1, 3))
 
+def _get_hard_identity_matches(
+        detection_ids: np.ndarray,
+        track_ids: np.ndarray,
+        dist_matrix: np.ndarray,
+        dist_threshold: float
+    ) -> np.ndarray:
 
-def associate_detections_to_trackers(detections, trackers, dist_threshold):
-    """
-    Assigns detections to tracked object (both represented as bounding boxes)
+    ids_to_det = defaultdict(list)
+    for det_idx, det_id in enumerate(detection_ids):
+        if det_id >= 0:
+            ids_to_det[int(det_id)].append(det_idx)
 
-    Returns 3 lists of matches, unmatched_detections and unmatched_trackers
-    """
-    if len(trackers) == 0:
-        return np.empty((0,2), dtype=int), np.arange(len(detections)), np.empty((0,3), dtype=int)
+    ids_to_track = defaultdict(list)
+    for track_idx, track_id in enumerate(track_ids):
+        if track_id >= 0:
+            ids_to_track[int(track_id)].append(track_idx)
 
-    dist_matrix = cdist(detections[:,:2], trackers[:,:2], 'euclidean')
+    forced_matches = {}
+    for det_id, det_indices in ids_to_det.items():
+        if len(det_indices) != 1:
+            continue
+        track_indices = ids_to_track.get(det_id, [])
+        if len(track_indices) != 1:
+            continue
 
-    if min(dist_matrix.shape) > 0:
-        matched_indices = linear_assignment(dist_matrix)
-    else:
-        matched_indices = np.empty(shape=(0, 2))
+        det_idx = det_indices[0]
+        track_idx = track_indices[0]
 
-    unmatched_detections = []
-    for d, det in enumerate(detections):
-        if d not in matched_indices[:,0]:
-            unmatched_detections.append(d)
+        # Check distance between new detection and currently tracked object
+        if dist_matrix[det_idx, track_idx] <= dist_threshold:
+            # Forcefully matching new detection to currently tracked object
+            forced_matches[det_idx] = track_idx
 
+    used_dets = set(forced_matches.keys())
+    remaining_dets = np.array([i for i in range(len(detection_ids)) if i not in used_dets])
+
+    used_trackers = set(forced_matches.values())
+    remaining_trackers = np.array([i for i in range(len(track_ids)) if i not in used_trackers])
+
+    # Ordinary association between remaining dets and trackers
+    ordinary_matches = []
+    if len(remaining_dets) > 0 and len(remaining_trackers) > 0:
+        remaining_dist_matrix = dist_matrix[remaining_dets][:, remaining_trackers]
+        remaining_indices = linear_assignment(remaining_dist_matrix)
+        # Translating indices
+        for det_idx, track_idx in remaining_indices:
+            ordinary_matches.append([remaining_dets[det_idx], remaining_trackers[track_idx]])
+
+    total_matched_indices = np.array(list(forced_matches.items()) + ordinary_matches).reshape(-1, 2)
+
+    return total_matched_indices
+
+def _filter_matches_by_distance(
+        total_matched_indices: np.ndarray,
+        dist_matrix: np.ndarray,
+        dist_threshold: float
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+    # Identify trackers and detections that were not matched at all
+    unmatched_dets = []
+    for d in range(dist_matrix.shape[0]):
+        if d not in total_matched_indices[:, 0]:
+            unmatched_dets.append(d)
     unmatched_trackers = []
-    for t, trk in enumerate(trackers):
-        if t not in matched_indices[:,1]:
+    for t in range(dist_matrix.shape[1]):
+        if t not in total_matched_indices[:, 1]:
             unmatched_trackers.append(t)
 
-    #filter out matched with low IOU
+    # Filter out detections and trackers whose distance exceeds the accepted threshold
     matches = []
-    for m in matched_indices:
-        if dist_matrix[m[0], m[1]] > dist_threshold:
-            unmatched_detections.append(m[0])
-            unmatched_trackers.append(m[1])
+    for match in total_matched_indices:
+        if dist_matrix[match[0], match[1]] > dist_threshold:
+            unmatched_dets.append(match[0])
+            unmatched_trackers.append(match[1])
         else:
-            matches.append(m.reshape(1,2))
+            matches.append(match.reshape(1, 2))
 
     if len(matches) == 0:
         matches = np.empty((0, 2), dtype=int)
     else:
         matches = np.concatenate(matches, axis=0)
 
-    return matches, np.array(unmatched_detections), np.array(unmatched_trackers)
+    return matches, np.array(unmatched_dets), np.array(unmatched_trackers)
+
+
+def associate_detections_to_trackers(
+        detections: np.ndarray,
+        trackers: np.ndarray,
+        dist_threshold: float,
+        detection_ids: np.ndarray | None = None,
+        track_ids: np.ndarray | None = None,
+        association_mode: str = 'none',
+        weight: float = 0.5 # the greater it is, the more cost decreases
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+    # Explicit input validation checks
+    if association_mode not in ('none', 'soft', 'hard'):
+        raise ValueError(f'Unknown association mode: {association_mode}')
+    if association_mode == 'soft' and not 0.0 <= weight <= 1.0:
+        raise ValueError('weight must be between 0 and 1.')
+    if detection_ids is not None:
+        detection_ids = np.asarray(detection_ids)
+        if len(detection_ids) != len(detections):
+            raise ValueError('detection_ids must have the same length as detections.')
+    if track_ids is not None:
+        track_ids = np.asarray(track_ids)
+        if len(track_ids) != len(trackers):
+            raise ValueError('track_ids must have the same length as trackers.')
+    # Early exit
+    if len(detections) == 0 or len(trackers) == 0:
+        return (np.empty((0, 2), dtype=int), np.arange(len(detections)), np.arange(len(trackers)))
+
+    ids_present = detection_ids is not None and track_ids is not None
+
+    # Compare only range and velocity
+    dist_matrix = cdist(detections[:,:2], trackers[:,:2], 'euclidean')
+    if association_mode == 'hard' and ids_present:
+        total_matched_indices = _get_hard_identity_matches(
+            detection_ids,
+            track_ids,
+            dist_matrix,
+            dist_threshold
+        )
+    else:
+        cost_matrix = dist_matrix.copy()
+        if association_mode == 'soft' and ids_present:
+            matching_ids = ((detection_ids[:, None] == track_ids[None, :]) & (detection_ids[:, None] >= 0))
+            cost_matrix[matching_ids] *= (1.0 - weight)
+
+        total_matched_indices = linear_assignment(cost_matrix)
+    return _filter_matches_by_distance(total_matched_indices, dist_matrix, dist_threshold)
 
 
 class KalmanBoxTracker:
@@ -180,32 +270,56 @@ class RDSort:
         self.frame_count: int = 0
         self.tracker_count: int = 0
 
-    def update(self, dets: np.ndarray = np.empty((0, 3))):
+    def update(self, 
+        dets: np.ndarray = np.empty((0, 3)),
+        detection_ids: np.ndarray | None = None,
+        association_mode: str = 'none',
+        weight: float = 0.5
+    ) -> np.ndarray:
         """
         Params:
         dets - a numpy array of detections in the format [[r,v,idx],[r,v,idx],...]
+        detection_ids - optional KF detection id hints, one per detection
+        association_mode - association strategy: 'none', 'soft', or 'hard'
+        weight - weight used for soft association
+        
         Requires: this method must be called once for each frame even with empty detections (use np.empty((0, 3)) for frames without detections).
-        Returns the a similar array, where the last column is the object ID.
+        Returns tracking results in the format [[r,v,id,idx],...], where id is the KF track ID and idx is the original proposal index.
 
         NOTE: The number of objects returned may differ from the number of detections provided.
         """
+        if detection_ids is not None:
+            detection_ids = np.asarray(detection_ids)
+            if len(detection_ids) != len(dets):
+                raise ValueError('detection_ids must have the same length as dets.')
+        
         self.frame_count += 1
         # get predicted locations from existing trackers.
-        trks = np.zeros((len(self.trackers), 3))
+        tracks = np.zeros((len(self.trackers), 3))
         to_del = []
         ret = []
 
-        for t, trk in enumerate(trks):
+        for t, track in enumerate(tracks):
             pos = self.trackers[t].predict()[0]
-            trk[:] = [pos[0], pos[1], 0]
-            if np.any(np.isnan(pos)):
+            track[:] = [pos[0], pos[1], 0]
+            if np.any(~np.isfinite(pos)):
                 to_del.append(t)
 
-        trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
+        tracks = np.ma.compress_rows(np.ma.masked_invalid(tracks))
 
         for t in reversed(to_del):
             self.trackers.pop(t)
-        matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets, trks, self.dist_threshold)
+
+        track_ids = np.array([track.id + 1 for track in self.trackers], dtype=int)
+        matched, unmatched_dets, unmatched_tracks = associate_detections_to_trackers(
+            dets,
+            tracks,
+            self.dist_threshold,
+            detection_ids=detection_ids,
+            track_ids=track_ids,
+            association_mode=association_mode,
+            weight=weight
+        )
 
         # update matched trackers with assigned detections
         for m in matched:
@@ -213,20 +327,20 @@ class RDSort:
 
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:
-            trk = KalmanBoxTracker(dets[i, :], self.tracker_count, dt=(1 / self.fps))
+            track = KalmanBoxTracker(dets[i, :], self.tracker_count, dt=(1 / self.fps))
             self.tracker_count += 1
-            self.trackers.append(trk)
+            self.trackers.append(track)
 
         i = len(self.trackers)
-        for trk in reversed(self.trackers):
-            d = trk.get_state()[0]
+        for track in reversed(self.trackers):
+            d = track.get_state()[0]
 
-            if (trk.time_since_update < 1) and ((trk.hit_streak >= self.min_hits) or (self.frame_count <= self.min_hits)):
-                ret.append(np.concatenate((d, [trk.id + 1], [trk.original_idx])).reshape(1, -1)) # +1 as MOT benchmark requires positive
+            if (track.time_since_update < 1) and ((track.hit_streak >= self.min_hits) or (self.frame_count <= self.min_hits)):
+                ret.append(np.concatenate((d, [track.id + 1], [track.original_idx])).reshape(1, -1)) # +1 as MOT benchmark requires positive
 
             i -= 1
             # remove dead tracklet
-            if trk.time_since_update > self.max_age:
+            if track.time_since_update > self.max_age:
                 self.trackers.pop(i)
 
         if len(ret) > 0:
