@@ -1,0 +1,35 @@
+#---Model---
+# Tracker model to evaluate (Options: 'RadarMOTR', 'SORT', 'KF'. Default is 'RadarMOTR')
+tracker: 'HybridKF'
+
+# Name of the directory where the track files are stored
+tracker_dirname: 'hybrid_kf'
+
+#---RadarMOTR config---
+# Path to the model weights to load
+model_path: 'data/models/radarmotr_r18.pth'
+
+score_threshold: 0.5
+filter_score_threshold: 0.5
+
+miss_tolerance: 5
+area_threshold: 0           # Min area in train and val datasets is 8
+
+proposal_assisted: false
+proposal_iou_threshold: 0.30
+proposals_normalized: true
+
+#---KF config---
+# Maximum number of frames to keep alive a track without associated detections.
+max_age: 5
+min_hits: 1
+dist_threshold: 6
+
+range_resolution: 0.1953125
+velocity_resolution: 0.41968030701528203
+fps: 10
+
+association_mode: 'soft'
+weight: 0.5
+
+augment_data: false

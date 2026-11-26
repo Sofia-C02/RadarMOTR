@@ -17,6 +17,7 @@ from trackers.tracker_base import Tracker
 from trackers.radarmotr import RadarMOTRTracker
 from trackers.sort import SortTracker
 from trackers.kf import KFTracker
+from trackers.hybrid_kf import HybridKFTracker
 
 # Benchmarking
 from benchmarking.latency_meter import LatencyMeter
@@ -33,6 +34,8 @@ ex.add_named_config('resnet18', os.path.join('configs', 'resnet18.yaml'))
 ex.add_named_config('debug', os.path.join('configs', 'eval_debug.yaml'))
 ex.add_named_config('sort', os.path.join('configs', 'trackers', 'sort.yaml'))
 ex.add_named_config('kf', os.path.join('configs', 'trackers', 'kf.yaml'))
+ex.add_named_config('hybrid_kf', os.path.join('configs', 'trackers', 'hybrid_kf.yaml'))
+
 # Benchmark
 ex.add_named_config('latency', os.path.join('configs', 'latency.yaml'))
 
@@ -74,6 +77,8 @@ def build_tracker(tracker: str, **kwargs) -> Tracker:
         model = SortTracker(**kwargs)
     elif tracker == 'KF':
         model = KFTracker(**kwargs)
+    elif tracker == 'HybridKF':
+        model = HybridKFTracker(**kwargs)
     elif tracker is None:
         raise ValueError('Please select the tracker to evaluate by passing: "RadarMOTR" or "SORT".')
     else:

@@ -52,8 +52,11 @@ class RadarMOTRTracker(Tracker):
         return dt_instances[keep]
 
     def track_frame_with_proposal_ids(self, frame: int, data: tuple[torch.Tensor, dict[str, torch.Tensor]]):
-        data = data_dict_to_device(data, self.device)
         image, targets = data
+        data = data_dict_to_device({'image': image, 'targets': targets.copy()}, self.device, non_blocking=True)
+        image = data['image']
+        targets = data['targets']
+
         proposals = targets['proposals']
         image_size = tuple(targets['orig_size'].tolist())
 
