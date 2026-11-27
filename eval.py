@@ -1,4 +1,5 @@
 from argparse import Namespace
+import json
 from logging import Logger
 import glob
 import os
@@ -20,7 +21,8 @@ from trackers.kf import KFTracker
 from trackers.hybrid_kf import HybridKFTracker
 
 # Benchmarking
-from benchmarking.latency_meter import LatencyMeter
+from benchmarking.latency_meter import SequenceLatencyMeter
+from tools.latency_to_markdown import to_markdown as latency_to_markdown
 
 # Sacred config
 ex = new_experiment('Tracker-Eval',
@@ -113,7 +115,7 @@ def eval(args: Namespace, _log: Logger):
     # Initialize latency benchmarking
     latency_meter = None
     if args.benchmark_latency:
-        latency_meter = LatencyMeter()
+        latency_meter = SequenceLatencyMeter()
     _log.info(f'Starting tracking.')
 
     transforms = build_transforms(args.dataset, args.split, args)
@@ -127,12 +129,18 @@ def eval(args: Namespace, _log: Logger):
                             collate_fn=dataset.collate)
 
         tracker.reset()
+        if latency_meter is not None:
+            latency_meter.set_sequence(dataset.id)
         tracker.track(loader, dataset.id, output_dir, latency_meter)
 
-    # Log latency measurements
+    # Save latency measurements
     if latency_meter is not None:
-        summary = latency_meter.summary()
-        _log.info(f'Latency measurements: {summary}')
+        latency_meter.save_summary_csv(
+            os.path.join(output_dir, 'latency_summary.csv')
+        )
+        latency_meter.save_records_json(
+            os.path.join(output_dir, 'latency_records.json')
+        )
 
     _log.info(f'Starting evaluation.')
 
@@ -140,6 +148,7 @@ def eval(args: Namespace, _log: Logger):
 
     print()
     to_markdown(output_dir)
+    latency_to_markdown(output_dir)
     print()
 
 
