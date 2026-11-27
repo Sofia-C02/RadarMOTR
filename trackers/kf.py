@@ -56,19 +56,25 @@ class KFTracker(Tracker):
             y_max = _clip(y_max, 0, img_h - 1)
 
             partitioned_rd = image[0, y_min:y_max+1, x_min:x_max+1].numpy()
-            threshold_probability = np.max(partitioned_rd) * 0.5
 
-            bw = np.array(partitioned_rd)
-            bw[bw < threshold_probability] = 0
+            if partitioned_rd.size == 0:
+                c = np.array([(y_min + y_max) / 2, (x_min + x_max) / 2])
+            else:
+                threshold_probability = np.max(partitioned_rd) * 0.5
+                bw = np.array(partitioned_rd)
+                bw[bw < threshold_probability] = 0
 
-            img_cc, _ = label(bw)
-            cc = regionprops(img_cc)
-
-            i = np.argmax([c.area for c in cc])
-            c = np.array(cc[i].centroid)
-            c[0] += y_min
-            c[1] += x_min
-            centroids.append(c)
+                img_cc, _ = label(bw)
+                cc = regionprops(img_cc)
+                if len(cc) > 0:
+                    i = np.argmax([c.area for c in cc])
+                    c = np.array(cc[i].centroid)
+                    c[0] += y_min
+                    c[1] += x_min
+                else:
+                    c = np.array([(y_min + y_max) / 2, (x_min + x_max) / 2])
+                
+                centroids.append(c)
 
         # r,v
         centroids = np.stack(centroids)
